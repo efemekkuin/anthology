@@ -285,3 +285,20 @@ async function getSubtitles(id, mediaType, season, episode) {
         return { subtitles: [] };
     }
 }
+
+async function getSubtitles(id, mediaType, season, episode) {
+    // OpenAnime genellikle videonun içine hardsub gömer veya M3U8 içinde yollar.
+    // Şimdilik Nuvio çökmesin diye boş liste dönüyoruz.
+    return { subtitles: [] };
+}
+
+// Nuvio'nun bu fonksiyonları dışarıdan çağırabilmesi için global objelere atıyoruz.
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { getStreams, getCatalog, getMeta, getSubtitles };
+}
+if (typeof globalThis !== "undefined") {
+    globalThis.getStreams = getStreams;
+    globalThis.getCatalog = getCatalog;
+    globalThis.getMeta = getMeta;
+    globalThis.getSubtitles = getSubtitles;
+}
