@@ -192,8 +192,36 @@ async function getStreams(id, mediaType, season, episode) {
                 epData = fRes?.episodeData || {};
             }
 
+            const secName = f.secureName || "";
+            const fName = f.name || secName || "Varsayılan";
+            
+            // Altyazıları bu aşamada toplayıp video objesine gömüyoruz
+            let epSubtitles = [];
+            if (secName && f.is4K) {
+                for (const ext of ["vtt", "srt"]) {
+                    const subUrl = `${API_BASE}/anime/${slug}/season/${sNum}/episode/${eNum}/subtitles/${secName}?type=${ext}`;
+                    epSubtitles.push({
+                        id: `openanime_${secName}_${ext}`,
+                        url: subUrl,
+                        file: subUrl,
+                        link: subUrl,
+                        lang: "tur",
+                        language: "tr",
+                        label: `${fName} (${ext.toUpperCase()})`,
+                        name: `${fName} (${ext.toUpperCase()})`,
+                        title: `${fName} (${ext.toUpperCase()})`,
+                        format: ext,
+                        type: `text/${ext}`,
+                        mimeType: `text/${ext}`,
+                        headers: {
+                            "Referer": MAIN_URL + "/",
+                            "User-Agent": DEFAULT_HEADERS["User-Agent"]
+                        }
+                    });
+                }
+            }
+
             const files = epData.files || [];
-            const fName = f.name || f.secureName || "Varsayılan";
 
             for (const fileObj of files) {
                 const relFile = String(fileObj.file || "").replace(/^\/+/, "");
@@ -214,7 +242,9 @@ async function getStreams(id, mediaType, season, episode) {
                     headers: {
                         "Referer": MAIN_URL + "/",
                         "User-Agent": DEFAULT_HEADERS["User-Agent"]
-                    }
+                    },
+                    // Nuvio'nun okuması için altyazıları direkt akışa (stream) ekledik
+                    subtitles: epSubtitles.length > 0 ? epSubtitles : undefined
                 });
             }
         }
