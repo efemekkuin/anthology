@@ -1,6 +1,6 @@
 /**
  * Nuvio / Anthology Provider: OpenAnime
- * Altyazı desteği eklenmiş sürüm (Anizium mantığıyla)
+ * Altyazı desteği eklenmiş sürüm (Anizium mantığıyla) + mobil düzeltmeleri
  */
 
 const API_BASE = "https://api.openani.me";
@@ -8,6 +8,7 @@ const MAIN_URL = "https://openani.me";
 const PROTOCOL_MODEL = "RCSA-14402/05";
 const TMDB_API_KEY = "500330721680edb6d5f7f12ba7cd9023";
 const DEBUG = false; // true yaparsan episodeData yapısını konsola yazar
+const INLINE_SUBS = true; // false yaparsan altyazıyı indirip çevirmeden direkt link verir
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -130,6 +131,94 @@ function absolutize(rel, cdnHost, slug, sNum) {
     return `${cdnHost}/animes/${slug}/${sNum}/${clean}`;
 }
 
+// --- MOBİL İÇİN: URL çözme + ASS/SRT -> VTT dönüştürme ---
+
+// Hermes'te new URL(rel, base) güvenilir değil, elle çözüyoruz
+function resolveUrl(rel, base) {
+    if (/^https?:\/\//i.test(rel)) return rel;
+    if (rel.startsWith("//")) return "https:" + rel;
+    const m = String(base).match(/^(https?:\/\/[^\/]+)(\/[^?#]*)?/i);
+    if (!m) return rel;
+    const origin = m[1];
+    if (rel.startsWith("/")) return origin + rel;
+    const dir = (m[2] || "/").replace(/[^\/]*$/, "");
+    return origin + dir + rel;
+}
+
+function pad(n, l) {
+    n = String(n);
+    while (n.length < l) n = "0" + n;
+    return n;
+}
+
+// ASS zamanı (h:mm:ss.cc) -> VTT zamanı (hh:mm:ss.mmm)
+function assTime(t) {
+    const m = String(t).trim().match(/^(\d+):(\d+):(\d+)[.,](\d+)/);
+    if (!m) return "00:00:00.000";
+    const ms = parseInt((m[4] + "00").substring(0, 3));
+    return pad(m[1], 2) + ":" + pad(m[2], 2) + ":" + pad(m[3], 2) + "." + pad(ms, 3);
+}
+
+function assToVtt(text) {
+    const lines = text.split(/\r?\n/);
+    let fmt = null;
+    const out = ["WEBVTT", ""];
+    for (const line of lines) {
+        if (/^Format:/i.test(line) && !fmt && /Start/i.test(line)) {
+            fmt = line.replace(/^Format:\s*/i, "").split(",").map(s => s.trim().toLowerCase());
+            continue;
+        }
+        if (!/^Dialogue:/i.test(line) || !fmt) continue;
+        const parts = line.replace(/^Dialogue:\s*/i, "").split(",");
+        const textIdx = fmt.indexOf("text");
+        const sIdx = fmt.indexOf("start");
+        const eIdx = fmt.indexOf("end");
+        if (textIdx < 0 || sIdx < 0 || eIdx < 0) continue;
+        const body = parts.slice(textIdx).join(",")
+            .replace(/\{[^}]*\}/g, "")
+            .replace(/\\N/g, "\n").replace(/\\n/g, "\n").replace(/\\h/g, " ")
+            .trim();
+        if (!body) continue;
+        out.push(assTime(parts[sIdx]) + " --> " + assTime(parts[eIdx]));
+        out.push(body);
+        out.push("");
+    }
+    return out.join("\n");
+}
+
+function srtToVtt(text) {
+    return "WEBVTT\n\n" + text.replace(/\r/g, "").replace(/(\d+:\d+:\d+),(\d+)/g, "$1.$2");
+}
+
+// Altyazıyı kendimiz indirip VTT data URI'ye çeviriyoruz
+async function inlineSubtitles(list) {
+    if (!INLINE_SUBS) return list;
+    const result = [];
+    for (const s of list) {
+        if (!s || !s.url || /^data:/i.test(s.url) || /\.m3u8(\?|#|$)/i.test(s.url)) {
+            result.push(s);
+            continue;
+        }
+        try {
+            const res = await fetch(s.url, { headers: { "Referer": MAIN_URL + "/", "User-Agent": UA } });
+            if (!res.ok) { result.push(s); continue; }
+            let text = await res.text();
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            let vtt;
+            if (/^WEBVTT/.test(text.trim())) vtt = text;
+            else if (/\[Script Info\]|\[Events\]/i.test(text)) vtt = assToVtt(text);
+            else if (/-->/.test(text)) vtt = srtToVtt(text);
+            else { result.push(s); continue; }
+            result.push(Object.assign({}, s, {
+                url: "data:text/vtt;charset=utf-8," + encodeURIComponent(vtt)
+            }));
+        } catch (e) {
+            result.push(s);
+        }
+    }
+    return result;
+}
+
 function formatSubtitles(raw) {
     const subs = [];
     const seen = {};
@@ -137,10 +226,11 @@ function formatSubtitles(raw) {
         if (!s || !s.url || seen[s.url]) return;
         seen[s.url] = true;
         const info = mapLang(s.langCode, s.label);
-        const isVtt = /\.vtt(\?|#|$)/i.test(s.url);
-        const isSrt = /\.srt(\?|#|$)/i.test(s.url);
-        const isAss = /\.(ass|ssa)(\?|#|$)/i.test(s.url);
-        const isM3u8 = /\.m3u8(\?|#|$)/i.test(s.url);
+        const isData = /^data:/i.test(s.url);
+        const isVtt = isData || /\.vtt(\?|#|$)/i.test(s.url);
+        const isSrt = !isData && /\.srt(\?|#|$)/i.test(s.url);
+        const isAss = !isData && /\.(ass|ssa)(\?|#|$)/i.test(s.url);
+        const isM3u8 = !isData && /\.m3u8(\?|#|$)/i.test(s.url);
         const format = isVtt ? "vtt" : isSrt ? "srt" : isAss ? "ass" : isM3u8 ? "m3u8" : "vtt";
         const mime = format === "vtt" ? "text/vtt" : format === "srt" ? "application/x-subrip" : format === "ass" ? "text/x-ssa" : "application/x-mpegURL";
         const label = s.label || info.label;
@@ -228,8 +318,7 @@ async function extractHlsSubs(masterUrl) {
             if (!uri) continue;
             const name = (line.match(/NAME="([^"]*)"/i) || [])[1] || null;
             const lang = (line.match(/LANGUAGE="([^"]*)"/i) || [])[1] || "tr";
-            let url;
-            try { url = new URL(uri, masterUrl).toString(); } catch (e) { url = uri; }
+            const url = resolveUrl(uri, masterUrl);
             out.push({ url, label: name, langCode: lang });
         }
     } catch (e) {}
@@ -322,11 +411,13 @@ async function collectEpisode(id, mediaType, season, episode) {
             });
         }
 
-        const formatted = formatSubtitles(fansubSubs);
+        // Altyazıları indirip VTT'ye çevir (mobil oynatıcı header/ASS desteklemese de çalışsın)
+        const processedSubs = await inlineSubtitles(fansubSubs);
+        const formatted = formatSubtitles(processedSubs);
         // Her fansub'ın streamlerine kendi altyazısını ekle
         fansubStreams.forEach(st => { if (formatted.length > 0) st.subtitles = formatted; });
         streams.push(...fansubStreams);
-        rawSubs.push(...fansubSubs);
+        rawSubs.push(...processedSubs);
     }
 
     log("toplam altyazı:", rawSubs.length);
