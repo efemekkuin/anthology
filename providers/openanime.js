@@ -229,18 +229,59 @@ async function getStreams(id, mediaType, season, episode) {
 }
 
 async function getSubtitles(id, mediaType, season, episode) {
-    // OpenAnime genellikle videonun içine hardsub gömer veya M3U8 içinde yollar.
-    // Şimdilik Nuvio çökmesin diye boş liste dönüyoruz.
-    return { subtitles: [] };
-}
+    try {
+        let slug = null;
+        let sNum = parseInt(season) || 1;
+        let eNum = parseInt(episode) || 1;
 
-// Nuvio'nun bu fonksiyonları dışarıdan çağırabilmesi için global objelere atıyoruz.
-if (typeof module !== "undefined" && module.exports) {
-    module.exports = { getStreams, getCatalog, getMeta, getSubtitles };
-}
-if (typeof globalThis !== "undefined") {
-    globalThis.getStreams = getStreams;
-    globalThis.getCatalog = getCatalog;
-    globalThis.getMeta = getMeta;
-    globalThis.getSubtitles = getSubtitles;
+        if (String(id).startsWith("openanime:ep:")) {
+            const parts = String(id).split(":");
+            slug = parts[2];
+            sNum = parseInt(parts[3]);
+            eNum = parseInt(parts[4]);
+        } else {
+            slug = await resolveSlugFromId(id, mediaType);
+        }
+
+        if (!slug) return { subtitles: [] };
+
+        const baseEpUrl = `/anime/${slug}/season/${sNum}/episode/${eNum}`;
+        const initial = await openAnimeFileFetch ? await openAnimeFetch(baseEpUrl) : await openAnimeFetch(baseEpUrl);
+        if (!initial) return { subtitles: [] };
+
+        let fansubs = initial.fansubs || [];
+        const firstEpData = initial.episodeData || {};
+        if (fansubs.length === 0 && firstEpData.fansub) {
+            fansubs = [firstEpData.fansub];
+        }
+
+        let subtitles = [];
+
+        for (const f of fansubs) {
+            const secName = f.secureName || "";
+            const fName = f.name || secName || "Varsayılan";
+            
+            // OpenAnime'nin 4K/softsub altyazı uç noktaları
+            if (secName && f.is4K) {
+                for (const ext of ["vtt", "srt"]) {
+                    subtitles.push({
+                        id: `openanime_${secName}_${ext}`,
+                        url: `${API_BASE}/anime/${slug}/season/${sNum}/episode/${eNum}/subtitles/${secName}?type=${ext}`,
+                        lang: "tur",
+                        language: "tr",
+                        label: `${fName} (${ext.toUpperCase()})`,
+                        format: ext,
+                        headers: {
+                            "Referer": MAIN_URL + "/",
+                            "User-Agent": DEFAULT_HEADERS["User-Agent"]
+                        }
+                    });
+                }
+            }
+        }
+
+        return { subtitles };
+    } catch (e) {
+        return { subtitles: [] };
+    }
 }
