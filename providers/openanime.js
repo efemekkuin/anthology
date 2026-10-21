@@ -8,7 +8,7 @@ const MAIN_URL = "https://openani.me";
 const PROTOCOL_MODEL = "RCSA-14402/05";
 const TMDB_API_KEY = "500330721680edb6d5f7f12ba7cd9023";
 const DEBUG = false; // true yaparsan episodeData yapısını konsola yazar
-const INLINE_SUBS = true; // false yaparsan altyazıyı indirip çevirmeden direkt link verir
+const INLINE_SUBS = false; // false yaparsan altyazıyı indirip çevirmeden direkt link verir
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
