@@ -1,6 +1,6 @@
 /**
  * Anthology Provider: OpenAnime
- * Full Integrated Version (Anizium Subtitle Format & Robust Stream Fetching)
+ * Full Integrated Version (Stream Visibility & Subtitle Fix)
  */
 
 const API_BASE = "https://api.openani.me";
@@ -17,8 +17,6 @@ const DEFAULT_HEADERS = {
 };
 
 let _cdnHost = null;
-
-// --- YARDIMCI FONKSİYONLAR ---
 
 async function openAnimeFetch(endpoint, params = {}) {
     let url = API_BASE + endpoint;
@@ -83,8 +81,6 @@ async function resolveSlugFromId(rawId, mediaType) {
     }
     return null;
 }
-
-// --- ANA NUVIO ARAYÜZLERİ (API) ---
 
 async function getCatalog(args) {
     try {
@@ -195,7 +191,6 @@ async function getStreams(id, mediaType, season, episode) {
             const secName = f.secureName || "";
             const fName = f.name || secName || "Varsayılan";
             
-            // Altyazıları bu aşamada toplayıp video objesine gömüyoruz (Anizium Formatı)
             let epSubtitles = [];
             if (secName && f.is4K) {
                 for (const ext of ["vtt", "srt"]) {
@@ -233,11 +228,13 @@ async function getStreams(id, mediaType, season, episode) {
 
                 streams.push({
                     name: "OpenAnime",
-                    title: `[${fName}] ${resLabel}`,
+                    title: `⛩ OpenAnime | ${fName} [${resLabel}]`,
                     url: fullUrl,
                     quality: resLabel,
                     format: isHls ? "hls" : "mp4",
                     isHls: isHls,
+                    contentLanguage: "tr",       // NUVIO İÇİN ZORUNLU DİL ETİKETİ
+                    provider: "openanime",       // NUVIO İÇİN ZORUNLU SAĞLAYICI DAMGASI
                     behaviorHints: { notWebReady: false },
                     headers: {
                         "Referer": MAIN_URL + "/",
@@ -253,7 +250,6 @@ async function getStreams(id, mediaType, season, episode) {
     }
 }
 
-// Nuvio'nun harici altyazı çekmesi için bağımsız Anizium benzeri Subtitles fonksiyonu
 async function getSubtitles(id, mediaType, season, episode) {
     try {
         let slug = null;
@@ -319,7 +315,6 @@ async function getSubtitles(id, mediaType, season, episode) {
     }
 }
 
-// DIŞA AKTARMA (ANTHOLOGY BUILD SİSTEMİ İÇİN ZORUNLU KISIM)
 if (typeof module !== "undefined" && module.exports) {
     module.exports = { getStreams, getCatalog, getMeta, getSubtitles };
 }
