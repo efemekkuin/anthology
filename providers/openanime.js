@@ -1,6 +1,6 @@
 /**
  * Anthology Provider: OpenAnime
- * Full Integrated Version (Stream Visibility & Subtitle Fix)
+ * Reverted to First Working Version + Safe Subtitles
  */
 
 const API_BASE = "https://api.openani.me";
@@ -52,10 +52,8 @@ async function resolveSlugFromId(rawId, mediaType) {
     if (String(rawId).startsWith("openanime:slug:")) {
         return String(rawId).split(":")[2];
     }
-    
     let cleanId = String(rawId).split(":")[0];
     let query = "";
-    
     try {
         if (cleanId.startsWith("tt")) {
             const findRes = await fetch(`https://api.themoviedb.org/3/find/${cleanId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`);
@@ -68,9 +66,7 @@ async function resolveSlugFromId(rawId, mediaType) {
             const data = await res.json();
             query = data.name || data.title || data.original_name;
         }
-        
         if (!query) return null;
-        
         const searchData = await openAnimeFetch("/anime/search", { q: query });
         const items = searchData?.animes || searchData || [];
         if (items.length > 0 && items[0].slug) {
@@ -111,16 +107,12 @@ async function getMeta(args) {
         if (!d) return { meta: null };
 
         const videos = [];
-        const seasons = d.seasons || [];
-        
-        for (const s of seasons) {
+        for (const s of d.seasons || []) {
             const sNum = s.season_number || s.tmdb_season_number || 1;
             if (s.hasEpisode === false || sNum <= 0) continue;
-            
             const sData = await openAnimeFetch(`/anime/${slug}/season/${sNum}`);
             const eps = sData?.season?.episodes || [];
             eps.sort((a, b) => (a.episodeNumber || 0) - (b.episodeNumber || 0));
-            
             for (const ep of eps) {
                 const eNum = ep.episodeNumber;
                 videos.push({
@@ -131,18 +123,7 @@ async function getMeta(args) {
                 });
             }
         }
-
-        return {
-            meta: {
-                id: `openanime:slug:${slug}`,
-                type: d.type === "movie" ? "movie" : "series",
-                name: d.romaji || d.name,
-                poster: d.pictures?.avatar,
-                background: d.pictures?.banner,
-                description: d.synopsis || "OpenAnime İçeriği",
-                videos: videos.length > 0 ? videos : undefined
-            }
-        };
+        return { meta: { id: `openanime:slug:${slug}`, type: d.type === "movie" ? "movie" : "series", name: d.romaji || d.name, poster: d.pictures?.avatar, background: d.pictures?.banner, description: d.synopsis || "OpenAnime İçeriği", videos: videos.length > 0 ? videos : undefined } };
     } catch (e) {
         return { meta: null };
     }
@@ -172,7 +153,6 @@ async function getStreams(id, mediaType, season, episode) {
 
         let fansubs = initial.fansubs || [];
         const firstEpData = initial.episodeData || {};
-        
         if (fansubs.length === 0 && firstEpData.fansub) {
             fansubs = [firstEpData.fansub];
         }
@@ -182,7 +162,6 @@ async function getStreams(id, mediaType, season, episode) {
         for (const f of fansubs) {
             const fId = f.id;
             let epData = firstEpData;
-            
             if (firstEpData?.fansub?.id !== fId) {
                 const fRes = await openAnimeFetch(baseEpUrl, { fansub: fId });
                 epData = fRes?.episodeData || {};
@@ -196,15 +175,15 @@ async function getStreams(id, mediaType, season, episode) {
                 for (const ext of ["vtt", "srt"]) {
                     const subUrl = `${API_BASE}/anime/${slug}/season/${sNum}/episode/${eNum}/subtitles/${secName}?type=${ext}`;
                     epSubtitles.push({
-                        id: `openanime_${secName}_${ext}`,
+                        id: "tr_" + ext,
                         url: subUrl,
                         file: subUrl,
                         link: subUrl,
                         lang: "tur",
                         language: "tr",
-                        label: `${fName} (${ext.toUpperCase()})`,
-                        name: `${fName} (${ext.toUpperCase()})`,
-                        title: `${fName} (${ext.toUpperCase()})`,
+                        label: `Türkçe (${ext.toUpperCase()})`,
+                        name: `Türkçe (${ext.toUpperCase()})`,
+                        title: `Türkçe (${ext.toUpperCase()})`,
                         format: ext,
                         type: `text/${ext}`,
                         mimeType: `text/${ext}`,
@@ -217,7 +196,6 @@ async function getStreams(id, mediaType, season, episode) {
             }
 
             const files = epData.files || [];
-
             for (const fileObj of files) {
                 const relFile = String(fileObj.file || "").replace(/^\/+/, "");
                 if (!relFile) continue;
@@ -228,13 +206,11 @@ async function getStreams(id, mediaType, season, episode) {
 
                 streams.push({
                     name: "OpenAnime",
-                    title: `⛩ OpenAnime | ${fName} [${resLabel}]`,
+                    title: `[${fName}] ${resLabel}`,
                     url: fullUrl,
                     quality: resLabel,
                     format: isHls ? "hls" : "mp4",
                     isHls: isHls,
-                    contentLanguage: "tr",       // NUVIO İÇİN ZORUNLU DİL ETİKETİ
-                    provider: "openanime",       // NUVIO İÇİN ZORUNLU SAĞLAYICI DAMGASI
                     behaviorHints: { notWebReady: false },
                     headers: {
                         "Referer": MAIN_URL + "/",
@@ -251,68 +227,7 @@ async function getStreams(id, mediaType, season, episode) {
 }
 
 async function getSubtitles(id, mediaType, season, episode) {
-    try {
-        let slug = null;
-        let sNum = parseInt(season) || 1;
-        let eNum = parseInt(episode) || 1;
-
-        if (String(id).startsWith("openanime:ep:")) {
-            const parts = String(id).split(":");
-            slug = parts[2];
-            sNum = parseInt(parts[3]);
-            eNum = parseInt(parts[4]);
-        } else {
-            slug = await resolveSlugFromId(id, mediaType);
-        }
-
-        if (!slug) return { subtitles: [] };
-
-        const baseEpUrl = `/anime/${slug}/season/${sNum}/episode/${eNum}`;
-        const initial = await openAnimeFetch(baseEpUrl);
-        if (!initial) return { subtitles: [] };
-
-        let fansubs = initial.fansubs || [];
-        const firstEpData = initial.episodeData || {};
-        
-        if (fansubs.length === 0 && firstEpData.fansub) {
-            fansubs = [firstEpData.fansub];
-        }
-
-        let allSubtitles = [];
-
-        for (const f of fansubs) {
-            const secName = f.secureName || "";
-            const fName = f.name || secName || "Varsayılan";
-            
-            if (secName && f.is4K) {
-                for (const ext of ["vtt", "srt"]) {
-                    const subUrl = `${API_BASE}/anime/${slug}/season/${sNum}/episode/${eNum}/subtitles/${secName}?type=${ext}`;
-                    allSubtitles.push({
-                        id: `openanime_${secName}_${ext}`,
-                        url: subUrl,
-                        file: subUrl,
-                        link: subUrl,
-                        lang: "tur",
-                        language: "tr",
-                        label: `${fName} (${ext.toUpperCase()})`,
-                        name: `${fName} (${ext.toUpperCase()})`,
-                        title: `${fName} (${ext.toUpperCase()})`,
-                        format: ext,
-                        type: `text/${ext}`,
-                        mimeType: `text/${ext}`,
-                        headers: {
-                            "Referer": MAIN_URL + "/",
-                            "User-Agent": DEFAULT_HEADERS["User-Agent"]
-                        }
-                    });
-                }
-            }
-        }
-
-        return { subtitles: allSubtitles };
-    } catch (e) {
-        return { subtitles: [] };
-    }
+    return { subtitles: [] };
 }
 
 if (typeof module !== "undefined" && module.exports) {
