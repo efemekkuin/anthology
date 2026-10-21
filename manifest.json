@@ -32,7 +32,7 @@
       "id": "openanime",
       "name": "OpenAnime",
       "description": "OpenAnime Türkçe altyazılı ve dublajlı anime kaynağı.",
-      "version": "1.0.0",
+      "version": "1.0.5",
       "author": "Ahmet Efe",
       "supportedTypes": [
         "movie",
