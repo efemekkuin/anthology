@@ -1,12 +1,12 @@
 /**
- * Nuvio / Anthology Provider: OpenAnime
- * Translated from Python OpenAnime Scraper
+ * Anthology Provider: OpenAnime
+ * Full integrated version for Nuvio/Anthology with Subtitles
  */
 
 const API_BASE = "https://api.openani.me";
 const MAIN_URL = "https://openani.me";
 const PROTOCOL_MODEL = "RCSA-14402/05";
-const TMDB_API_KEY = "500330721680edb6d5f7f12ba7cd9023"; // Anizium kodundaki public key
+const TMDB_API_KEY = "500330721680edb6d5f7f12ba7cd9023";
 
 const DEFAULT_HEADERS = {
     "Client-Protocol-Model": PROTOCOL_MODEL,
@@ -50,14 +50,12 @@ async function getCdnHost() {
     return _cdnHost;
 }
 
-// Nuvio TMDB id yollarsa, adını bulup OpenAnime'de slug aramak için
 async function resolveSlugFromId(rawId, mediaType) {
-    if (rawId.startsWith("openanime:slug:")) {
-        return rawId.split(":")[2];
+    if (String(rawId).startsWith("openanime:slug:")) {
+        return String(rawId).split(":")[2];
     }
     
-    // TMDB Araması
-    let cleanId = rawId.split(":")[0];
+    let cleanId = String(rawId).split(":")[0];
     let query = "";
     
     try {
@@ -75,7 +73,6 @@ async function resolveSlugFromId(rawId, mediaType) {
         
         if (!query) return null;
         
-        // OpenAnime'de Ara
         const searchData = await openAnimeFetch("/anime/search", { q: query });
         const items = searchData?.animes || searchData || [];
         if (items.length > 0 && items[0].slug) {
@@ -190,7 +187,6 @@ async function getStreams(id, mediaType, season, episode) {
             const fId = f.id;
             let epData = firstEpData;
             
-            // Eğer verisi çekilmemiş bir fansub ise istek at
             if (firstEpData?.fansub?.id !== fId) {
                 const fRes = await openAnimeFetch(baseEpUrl, { fansub: fId });
                 epData = fRes?.episodeData || {};
@@ -246,11 +242,12 @@ async function getSubtitles(id, mediaType, season, episode) {
         if (!slug) return { subtitles: [] };
 
         const baseEpUrl = `/anime/${slug}/season/${sNum}/episode/${eNum}`;
-        const initial = await openAnimeFileFetch ? await openAnimeFetch(baseEpUrl) : await openAnimeFetch(baseEpUrl);
+        const initial = await openAnimeFetch(baseEpUrl);
         if (!initial) return { subtitles: [] };
 
         let fansubs = initial.fansubs || [];
         const firstEpData = initial.episodeData || {};
+        
         if (fansubs.length === 0 && firstEpData.fansub) {
             fansubs = [firstEpData.fansub];
         }
@@ -261,7 +258,6 @@ async function getSubtitles(id, mediaType, season, episode) {
             const secName = f.secureName || "";
             const fName = f.name || secName || "Varsayılan";
             
-            // OpenAnime'nin 4K/softsub altyazı uç noktaları
             if (secName && f.is4K) {
                 for (const ext of ["vtt", "srt"]) {
                     subtitles.push({
@@ -286,13 +282,7 @@ async function getSubtitles(id, mediaType, season, episode) {
     }
 }
 
-async function getSubtitles(id, mediaType, season, episode) {
-    // OpenAnime genellikle videonun içine hardsub gömer veya M3U8 içinde yollar.
-    // Şimdilik Nuvio çökmesin diye boş liste dönüyoruz.
-    return { subtitles: [] };
-}
-
-// Nuvio'nun bu fonksiyonları dışarıdan çağırabilmesi için global objelere atıyoruz.
+// Dışa Aktarma
 if (typeof module !== "undefined" && module.exports) {
     module.exports = { getStreams, getCatalog, getMeta, getSubtitles };
 }
