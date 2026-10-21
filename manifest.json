@@ -29,6 +29,32 @@
       "supportsExternalPlayer": true
     },
     {
+      "id": "openanime",
+      "name": "OpenAnime",
+      "description": "OpenAnime Türkçe altyazılı ve dublajlı anime kaynağı.",
+      "version": "1.0.0",
+      "author": "Ahmet Efe",
+      "supportedTypes": [
+        "movie",
+        "tv",
+        "series",
+        "anime"
+      ],
+      "filename": "providers/openanime.js",
+      "enabled": true,
+      "formats": [
+        "hls",
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://openani.me/icon.png",
+      "contentLanguage": [
+        "tr",
+        "ja"
+      ],
+      "supportsExternalPlayer": true
+    },
+    {
       "id": "liderfilmizle",
       "name": "LiderFilm",
       "description": "LiderFilm.vip - Yerli & yabancı film ve dizi arşivi, 1080p doğrudan HLS akışları.",
